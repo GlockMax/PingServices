@@ -11,5 +11,20 @@ while True:
     
     # Имитация бурной деятельности
     time.sleep(1)
-
-    socket.send_string("Ну здравствуй")
+    
+    print("Шлём, что всё хорошо")
+    socket.send_string("ok")
+    
+    print("Получили ещё сообщение")
+    message = socket.recv()
+    time.sleep(1)
+    
+    print("Шлём, что всё плохо")
+    socket.send_multipart([b"error", b"An infernal error!"])
+    
+    message = socket.recv()
+    print("Ничего не шлём")
+    time.sleep(5)
+    
+    print("Что-то присылаем")
+    socket.send_string("ich bin krank")
