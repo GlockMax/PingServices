@@ -15,8 +15,8 @@ while True:
     print("Шлём, что всё хорошо")
     socket.send_string("ok")
     
-    print("Получили ещё сообщение")
     message = socket.recv()
+    print("Получили ещё сообщение")
     time.sleep(1)
     
     print("Шлём, что всё плохо")
