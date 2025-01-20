@@ -79,10 +79,11 @@ int main(){
 
 	for (int i : dead_addrs) {
             std::cout << i << "Тайм-аут для сокета " << addrs[i] << std::endl;
-	    
+
 	    poller.remove(sockets[i]);
 	    sockets[i].close();
-	    sockets.emplace(sockets.begin()+i, context, zmq::socket_type::req);
+	    zmq::socket_t s {context, zmq::socket_type::req};
+	    sockets[i] = std::move(s);
             sockets[i].set(zmq::sockopt::linger, 0);
 	    sockets[i].connect("tcp://" + addrs[i]);
 	    poller.add(sockets[i], zmq::event_flags::pollin);
