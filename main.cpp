@@ -9,88 +9,105 @@
 #include <json/json.h>
 
 
-// TODO: некоторый объект конфига, который будет удобно читать
-int main(){
+// TODO: некоторый объект конфига, который будет удобно читать В ОТДЕЛЬНОМ ФАЙЛЕ
+int main(int argc, char* argv[]){
     zmq::context_t context{1};
-
+    
+    // Чтение конфиг-файла
+    // 
     Json::Value addresses_obj;
     std::ifstream addr_file("addresses.json", std::ifstream::binary);
     addr_file >> addresses_obj;
-
+    
+    // Заполнение списка адресов
     std::vector<std::string> addrs;
     for (Json::Value::ArrayIndex i = 0; i != addresses_obj["addresses"].size(); i++) {
         addrs.push_back(addresses_obj["addresses"][i].asString());
     }
-    
+
+    // Количество адресов
     int addr_count = addrs.size();
 
+    // Опрашиваемые сокеты
     std::vector<zmq::socket_t> sockets;
+
+    // Опрашивающий поллер
     zmq::poller_t<int> poller;
 
+    // Создание сокетов
     for (int i = 0; i < addr_count; i++){
-	sockets.emplace_back(context, zmq::socket_type::req);    
-	std::cout << "nullpointer ли?: " << ((sockets[i]) == nullptr) << std::endl;
+    	sockets.emplace_back(context, zmq::socket_type::req);    
         sockets[i].set(zmq::sockopt::linger, 0);
-	std::cout << ("tcp://" + addrs[i]) << std::endl;
+        // Подключаемся
         sockets[i].connect("tcp://" + addrs[i]);
+        // Добавляем к поллеру
         poller.add(sockets[i], zmq::event_flags::pollin);
     }
-    std::cout << "nullpointer ли вне цикла?: " << ((sockets[0]) == nullptr) << std::endl;
 
+    // Тайм-аут для серверов
     const std::chrono::milliseconds timeout {3000};
     
+    // Входящие события от сокетов
     std::vector<zmq::poller_event<int>> in_events{addr_count};
     
-    std::vector<int> dead_addrs(addr_count);
-    std::iota(dead_addrs.begin(), dead_addrs.end(), 0);
+    // Ответившие адреса. Индекс в этом векторе является индексом в векторе сокетов,
+    // true - сокет ответил, false - нет
+    std::vector<bool> responding_addrs(addr_count, false);
 
     const std::string data = "get_status";
 
     while (true){
-	for (auto& socket : sockets){
+
+        // Отправляем get_status
+	    for (auto& socket : sockets){
             (socket).send(zmq::buffer(data), zmq::send_flags::none);
-	}
+	    }
+
+	    // Дожидаемся ответ и получаем количество сокетов, с которых есть ответ
         const int nin = poller.wait_all(in_events, timeout);
 
         for (int i = 0; i < nin; i++){
-	    // Находим индекс сокета, который нам ответил
-	    auto s_it = std::find(sockets.begin(), sockets.end(), in_events[i].socket);
-	    int s_n = std::distance(sockets.begin(), s_it);
+	        // Находим индекс сокета, который нам ответил
+	        auto s_it = std::find(sockets.begin(), sockets.end(), in_events[i].socket);
+	        int s_n = std::distance(sockets.begin(), s_it);
 
-            // И удаляем его из неответивших адресов
-            dead_addrs.erase(std::find(dead_addrs.begin(), dead_addrs.end(), s_n));
-
-	    std::vector<zmq::message_t> reply_multi;
-	    auto ret = zmq::recv_multipart(in_events[i].socket, 
+            // Раз сокет ответил, то в векторе нужно по тому же индексу поставить истину  
+            responding_addrs[s_n] = true;
+            
+            // Читаем сообщение
+	        std::vector<zmq::message_t> reply_multi;
+	        auto ret = zmq::recv_multipart(in_events[i].socket, 
 			        std::back_inserter(reply_multi),
 			        zmq::recv_flags::none);
-	    if (!ret){
-	        std::cout << "Ошибка в получении сообщения" << std::endl;
-	        return 1;
-	    }
-	    else {
-	    
-	        for (int i = 0; i < reply_multi.size(); i++){
-	            std::cout << addrs[s_n] << ":" << reply_multi[i].to_string() << " ";
+	        if (!ret){
+	            std::cout << "Ошибка в получении сообщения" << std::endl;
+	            return 1;
+	        } else {
+	            // Записываем сообщение
+	            for (int i = 0; i < reply_multi.size(); i++){
+	                std::cout << addrs[s_n] << ":" << reply_multi[i].to_string() << " ";
+	            }
+	            std::cout << std::endl;
 	        }
-	        std::cout << std::endl;
 	    }
-	}
 
-	for (int i : dead_addrs) {
-            std::cout << i << "Тайм-аут для сокета " << addrs[i] << std::endl;
-
-	    poller.remove(sockets[i]);
-	    sockets[i].close();
-	    zmq::socket_t s {context, zmq::socket_type::req};
-	    sockets[i] = std::move(s);
-            sockets[i].set(zmq::sockopt::linger, 0);
-	    sockets[i].connect("tcp://" + addrs[i]);
-	    poller.add(sockets[i], zmq::event_flags::pollin);
-	}
-        dead_addrs = std::vector<int>(addr_count);
-	std::iota(dead_addrs.begin(), dead_addrs.end(), 0);
-
+	    for (int i = 0; i < addr_count; i++) {
+	        if (!responding_addrs[i]){
+                std::cout << i << "Тайм-аут для сокета " << addrs[i] << std::endl;
+            
+                // Пересоздаём сокет
+	            poller.remove(sockets[i]);
+	            sockets[i].close();
+	            zmq::socket_t s {context, zmq::socket_type::req};
+	            sockets[i] = std::move(s);
+                sockets[i].set(zmq::sockopt::linger, 0);
+	            sockets[i].connect("tcp://" + addrs[i]);
+	            poller.add(sockets[i], zmq::event_flags::pollin);
+	        }
+	    }
+        
+        // Зануляем ответившие адреса
+        std::fill(responding_addrs.begin(), responding_addrs.end(), false);
     }
     return 0;
 }
