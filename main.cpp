@@ -3,14 +3,39 @@
 #include <fstream>	 // ifstream
 #include <chrono>	 // milliseconds
 #include <vector>
-#include <numeric>	 // std::iota
+#include <boost/program_options.hpp>
 
 #include <zmq_addon.hpp>
 #include <json/json.h>
 
 
+namespace po = boost::program_options;
+
+
+int parse_arguments(int argc, char* argv[]){
+    po::options_description desc("PingServices");
+    desc.add_options()
+        ("help,h", "Написать это сообщение")
+	("path", po::value<std::string>(), "Путь к файлу конфигурации");
+    po::variables_map vm;
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    if (vm.count("help")){
+        std::cout << desc << std::endl;
+	return 0;
+    }
+    if (vm.count("path")){
+        std::cout << vm["path"].as<std::string>() << std::endl;
+	return 0;
+    }
+    return 1;
+}
+
+
 // TODO: некоторый объект конфига, который будет удобно читать В ОТДЕЛЬНОМ ФАЙЛЕ
 int main(int argc, char* argv[]){
+    
+    parse_arguments(argc, argv);
+    
     zmq::context_t context{1};
     
     // Чтение конфиг-файла
