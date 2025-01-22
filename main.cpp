@@ -12,29 +12,49 @@
 namespace po = boost::program_options;
 
 
-int parse_arguments(int argc, char* argv[]){
-    po::options_description desc("PingServices");
+// Проверка на корректность вводимого имени файла
+bool validate_filename(std::string& filename){
+
+    if (filename.empty()) return false;
+    
+    size_t dot_pos = filename.find_last_of(".");
+    if (dot_pos == std::string::npos) return false;
+    return true;
+}
+
+
+// Функция парсинга аргументов командной строки. 
+// Возврат true - парсинг успешен
+// Возврат false - парсинг либо с ошибкой, либо введена команда -h
+bool parse_cmd_arguments(int argc, char* argv[], std::string& path){
+    po::options_description desc(
+            "PingServices: опрос контейнеров о их работе/n");
     desc.add_options()
         ("help,h", "Написать это сообщение")
-	("path", po::value<std::string>(), "Путь к файлу конфигурации");
+	    ("path", po::value<std::string>(), "Путь к файлу конфигурации");
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
     if (vm.count("help")){
         std::cout << desc << std::endl;
-	return 0;
+	    return false;
+    } 
+    else if (vm.count("path")){
+        std::string s = vm["path"].as<std::string>();
+        if (validate_filename(s)) { path = s; return true;}
     }
-    if (vm.count("path")){
-        std::cout << vm["path"].as<std::string>() << std::endl;
-	return 0;
-    }
-    return 1;
+    return false;
 }
+
+
+// Чтение кофига
+int read_config(std::string path);
 
 
 // TODO: некоторый объект конфига, который будет удобно читать В ОТДЕЛЬНОМ ФАЙЛЕ
 int main(int argc, char* argv[]){
     
-    parse_arguments(argc, argv);
+    std::string path;
+    bool pa_res = parse_cmd_arguments(argc, argv, path);
     
     zmq::context_t context{1};
     
@@ -51,7 +71,7 @@ int main(int argc, char* argv[]){
     }
 
     // Количество адресов
-    int addr_count = addrs.size();
+    size_t addr_count = addrs.size();
 
     // Опрашиваемые сокеты
     std::vector<zmq::socket_t> sockets;
